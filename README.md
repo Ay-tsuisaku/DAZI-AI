@@ -38,17 +38,29 @@ DAZI-AI is a serverless AI voice assistant developed entirely on the ESP32 platf
 
 ✅ **Complete Voice Interaction**:
 - Voice input via INMP441 microphone
+- Real-time speech recognition using ByteDance ASR API
 - AI processing through OpenAI API
-- Voice output via MAX98357A  I2S audio amplifier
+- Voice output via MAX98357A I2S audio amplifier
+
+✅ **Continuous Conversation Mode**:
+- Automatic speech recognition with VAD (Voice Activity Detection)
+- Seamless ASR → LLM → TTS conversation loop
+- Configurable conversation memory to maintain context
+- One-button control to start/stop continuous mode
 
 
 ## 🔧 System Architecture
 
 The system uses a modular design with the following key components:
 - **Voice Input**: INMP441 microphone with I2S interface
-- **AI Processing**: OpenAI ChatGPT API for conversation
-- **Voice Output**: MAX98357A  I2S audio amplifier for TTS playback
+- **Speech Recognition**: ByteDance ASR API for real-time transcription
+- **AI Processing**: OpenAI ChatGPT API for conversation with memory support
+- **Voice Output**: MAX98357A I2S audio amplifier for TTS playback
 - **Connectivity**: WiFi for API communication
+
+### Two Conversation Modes
+1. **Push-to-Talk Mode** (examples/chat): Hold button to record, release to process
+2. **Continuous Conversation Mode** (examples/chat_asr): Automatic ASR with VAD, seamless conversation loop
 
 ## 💻 Code Description
 
@@ -58,18 +70,25 @@ Core library files that need to be copied to Arduino's libraries folder.
 | Feature | Description |
 |---------|-------------|
 | ChatGPT Communication | Communicates with OpenAI API, handles requests and responses |
+| Conversation Memory | Maintains conversation history for context-aware responses |
 | TTS | Text-to-Speech functionality, converts AI replies to voice |
 | STT | Speech-to-Text functionality, converts user input to text |
+| Real-time ASR | ByteDance ASR integration with WebSocket protocol for streaming recognition |
+| VAD | Voice Activity Detection for automatic speech detection and silence handling |
 | Audio Processing | Processes and converts audio data formats |
 
 ### Code Structure
 ```
-├── examples/                  # Example projects
-│   └── chat/                  # Voice chat example
-│       └── chat.ino           # Main program with INMP441 support
-└── GPTChatLib/                # Core functionality library
-    ├── ArduinoGPTChat.cpp     # Library implementation
-    └── ArduinoGPTChat.h       # Library header
+├── examples/                     # Example projects
+│   ├── chat/                     # Push-to-talk voice chat example
+│   │   └── chat.ino              # Push-to-talk mode with INMP441
+│   └── chat_asr/                 # Continuous conversation example
+│       └── chat_asr.ino          # ASR-based continuous mode with memory
+└── GPTChatLib/                   # Core functionality library
+    ├── ArduinoGPTChat.cpp        # ChatGPT & TTS implementation
+    ├── ArduinoGPTChat.h          # ChatGPT & TTS header
+    ├── ArduinoASRChat.cpp        # Real-time ASR implementation
+    └── ArduinoASRChat.h          # Real-time ASR header
 ```
 
 ## 🔌 Hardware Requirements
@@ -114,10 +133,18 @@ Core library files that need to be copied to Arduino's libraries folder.
      - ArduinoJson (v7.4.1)
 
 3. **API Key Configuration**
-   - Open `examples/chat/chat.ino`
-   - Replace `"your-api-key"` with your actual OpenAI API key (line 50)
-   - Replace `"your-wifi-ssid"` and `"your-wifi-password"` with your WiFi credentials (lines 36-37)
-   - Optionally modify the system prompt to customize AI behavior (line 55)
+
+   **For Push-to-Talk Mode** (`examples/chat/chat.ino`):
+   - Replace `"your-api-key"` with your actual OpenAI API key
+   - Replace `"your-wifi-ssid"` and `"your-wifi-password"` with your WiFi credentials
+   - Optionally modify the system prompt to customize AI behavior
+
+   **For Continuous Conversation Mode** (`examples/chat_asr/chat_asr.ino`):
+   - Replace `"your-bytedance-asr-api-key"` with your ByteDance ASR API key (line 37)
+   - Replace `"your-openai-api-key"` with your OpenAI API key (line 41)
+   - Replace WiFi credentials (lines 33-34)
+   - Set `ENABLE_CONVERSATION_MEMORY` to 1 to enable memory or 0 to disable (line 7)
+   - Optionally modify the system prompt to customize AI personality (lines 81-104)
 
 4. **Hardware Wiring**
    - Connect INMP441 microphone according to pin table above
@@ -142,8 +169,8 @@ Core library files that need to be copied to Arduino's libraries folder.
 
 ## 📚 Example Projects
 
-### Voice Chat Assistant (examples/chat)
-This example demonstrates a complete voice interaction system with ChatGPT.
+### 1. Push-to-Talk Voice Chat (examples/chat)
+Traditional push-to-talk voice interaction system with ChatGPT.
 
 **Features:**
 - Push-to-talk voice recording with INMP441 microphone using BOOT button
@@ -160,10 +187,55 @@ This example demonstrates a complete voice interaction system with ChatGPT.
 - The system will transcribe your speech and send it to ChatGPT
 - ChatGPT's response will be played back as speech through the speaker
 
-**Push-to-Talk Control:**
+**Control:**
 - The system uses the ESP32's built-in BOOT button (GPIO 0) for voice control
 - Press and hold to record, release to process
 - No need to type commands in serial monitor - just use the button!
+
+### 2. Continuous Conversation Mode (examples/chat_asr) ⭐ NEW
+Advanced continuous voice conversation with real-time ASR and conversation memory.
+
+**Features:**
+- **Real-time ASR**: ByteDance ASR API for streaming speech recognition
+- **VAD (Voice Activity Detection)**: Automatic detection of speech start/end
+- **Seamless Conversation Loop**: Automatic ASR → LLM → TTS → ASR cycle
+- **Conversation Memory**: Maintains context across multiple conversation turns
+- **One-Button Control**: Single button press to start/stop continuous mode
+- **Intelligent Timeouts**: Auto-exit continuous mode if no speech detected
+- **State Machine Design**: Robust state management for smooth transitions
+
+**How It Works:**
+1. **Press BOOT button** → Enters continuous conversation mode
+2. **ASR Listening** → System starts listening for speech automatically
+3. **Speech Detection** → VAD detects when you start and stop speaking
+4. **Auto Processing** → Transcription sent to ChatGPT automatically
+5. **TTS Playback** → AI response plays through speaker
+6. **Auto Loop** → System automatically returns to listening state
+7. **Press BOOT again** → Exit continuous mode
+
+**Configuration Options:**
+- `ENABLE_CONVERSATION_MEMORY`: Toggle conversation history on/off (line 7)
+- `systemPrompt`: Customize AI personality and behavior (lines 81-104)
+- `setSilenceDuration()`: Adjust silence detection threshold (line 194)
+- `setMaxRecordingSeconds()`: Set maximum recording duration (line 195)
+
+**Usage:**
+- Press BOOT button once to start continuous conversation mode
+- Speak naturally - system will detect when you start and stop talking
+- AI responses play automatically
+- System loops back to listening after each response
+- Press BOOT button again to exit continuous mode
+
+**State Machine:**
+```
+IDLE → LISTENING → PROCESSING_LLM → PLAYING_TTS → WAIT_TTS_COMPLETE → LISTENING (loop)
+```
+
+**Benefits:**
+- No need to hold button while speaking
+- Natural conversation flow like talking to a person
+- Context-aware responses with conversation memory
+- Automatic voice detection eliminates manual control
 
 ## 💬 Community
 

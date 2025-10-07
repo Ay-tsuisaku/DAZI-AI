@@ -30,16 +30,16 @@
 #define SAMPLE_RATE 16000
 
 // WiFi settings
-const char* ssid     = "zh";
-const char* password = "66666666";
+const char* ssid     = "your-wifi-ssid";
+const char* password = "your-wifi-password";
 
 // ByteDance ASR API configuration
-const char* asr_api_key = "07fcb4a5-b7b2-45d8-864a-8cc0292380df";
+const char* asr_api_key = "your-bytedance-asr-api-key";
 const char* asr_cluster = "volcengine_input_en";
 
 // OpenAI API configuration for LLM and TTS
-const char* openai_apiKey = "sk-KkEHJ5tO1iiYIqr1jOmrH6FV2uagIICwzL0PDWarGIoHe3Zm";
-const char* openai_apiBaseUrl = "https://api.chatanywhere.tech";
+const char* openai_apiKey = "your-openai-api-key";
+const char* openai_apiBaseUrl = "your-openai-api-base-url";
 
 // System prompt configuration
 
