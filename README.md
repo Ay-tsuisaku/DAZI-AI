@@ -162,7 +162,7 @@ DAZI-AI/
    - Search and install the following libraries:
      - **ArduinoWebsocket** (v0.5.4 or later)
      - **ArduinoJson** (v7.4.1 or later)
-     - **Seeed_ARDUINO_mbedtls** (v3.0.2 or later)
+     - **Seeed_Arduino_mbedtls** (v3.0.2 or later)
 
 4. **API Key Configuration**
 
