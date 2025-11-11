@@ -32,6 +32,13 @@ class ArduinoGPTChat {
     String stopRecordingAndProcess();
     bool isRecording();
     size_t getRecordedSampleCount();
+
+    // AssemblyAI STT methods
+    void setAssemblyAIConfig(const char* assemblyAIKey);
+    String assemblyAISpeechToText(uint8_t* audioBuffer, size_t bufferSize);
+    String assemblyAISpeechToTextFromRecording();
+    String uploadAndTranscribe(uint8_t* audioBuffer, size_t bufferSize);
+    String pollTranscriptionResult(String transcriptId);
     
   private:
     void base64_encode(const uint8_t* input, size_t length, char* output);
@@ -50,8 +57,8 @@ class ArduinoGPTChat {
 
     // Conversation memory
     bool _memoryEnabled = false;
-    std::vector<std::pair<String, String>> _conversationHistory;  // pair<user_msg, assistant_msg>
-    const int _maxHistoryPairs = 5;  // Maximum conversation pairs to keep
+    std::vector<std::pair<String, String>> _conversationHistory;
+    const int _maxHistoryPairs = 5;
 
     // WAV file handling
     uint8_t* createWAVBuffer(int16_t* samples, size_t numSamples);
@@ -70,6 +77,11 @@ class ArduinoGPTChat {
     i2s_data_bit_width_t _i2sBitWidth;
     i2s_slot_mode_t _i2sSlotMode;
     i2s_std_slot_mask_t _i2sSlotMask;
+    
+    // AssemblyAI STT 
+    String _assemblyAIKey;
+    String _assemblyAIAudioUrl = "https://api.assemblyai.com/v2/upload";
+    String _assemblyAITranscriptUrl = "https://api.assemblyai.com/v2/transcript";
 };
 
 #endif
