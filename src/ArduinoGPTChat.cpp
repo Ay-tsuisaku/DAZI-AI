@@ -167,7 +167,7 @@ String ArduinoGPTChat::sendImageMessage(const char* imageFilePath, String questi
   
   // Now build JSON using smaller buffer
   DynamicJsonDocument doc(2048); // Only need small buffer since it doesn't contain base64 data
-  doc["model"] = "gpt-4.1-nano";
+  doc["model"] = "deepseek-v3";
   doc["messages"] = JsonArray();
   JsonObject message = doc["messages"].createNestedObject();
   message["role"] = "user";
@@ -478,6 +478,9 @@ void ArduinoGPTChat::_updateApiUrls() {
 }
 
 String ArduinoGPTChat::sendMessage(String message) {
+  Serial.println("🔍 Debug: Starting sendMessage...");
+  Serial.println("Message: " + message);
+
   HTTPClient http;
   http.begin(_apiUrl);
   http.addHeader("Content-Type", "application/json");
@@ -486,9 +489,14 @@ String ArduinoGPTChat::sendMessage(String message) {
   String payload = _buildPayload(message);
   int httpResponseCode = http.POST(payload);
 
+  Serial.println("HTTP Response Code: " + String(httpResponseCode));
+
   if (httpResponseCode == 200) {
     String response = http.getString();
+    Serial.println("Raw API Response: " + response);
+
     String assistantResponse = _processResponse(response);
+    Serial.println("Processed Response: " + assistantResponse);
 
     // Save to conversation history if memory is enabled
     if (_memoryEnabled && assistantResponse.length() > 0) {
@@ -499,13 +507,21 @@ String ArduinoGPTChat::sendMessage(String message) {
         _conversationHistory.erase(_conversationHistory.begin());
       }
 
-      Serial.printf("Memory: %d/%d conversation pairs stored\n",
-                    _conversationHistory.size(), _maxHistoryPairs);
+      //Serial.printf("Memory: %d/%d conversation pairs stored\n",
+                  //  _conversationHistory.size(), _maxHistoryPairs);
     }
-
+    http.end();
     return assistantResponse;
   }
+  else{
+    Serial.println("HTTP Error: " + String(httpResponseCode));
+    String errorResponse = http.getString();
+    if (errorResponse.length() > 0) {
+        Serial.println("Error Response: " + errorResponse);
+  }
+  http.end();
   return "";
+}
 }
 
 String ArduinoGPTChat::_buildPayload(String message) {
@@ -516,7 +532,7 @@ String ArduinoGPTChat::_buildPayload(String message) {
   }
 
   DynamicJsonDocument doc(bufferSize);
-  doc["model"] = "gpt-4.1-nano";
+  doc["model"] = "deepseek-chat";
   JsonArray messages = doc.createNestedArray("messages");
 
   // Add system message if configured
@@ -566,7 +582,7 @@ bool ArduinoGPTChat::textToSpeech(String text) {
   // Use Audio library's openai_speech function
   return audio.openai_speech(
     String(_apiKey),     // API key
-    "gpt-4o-mini-tts",   // Model
+    "deepseek-chat",   // Model
     text,                // Input text
     "alloy",             // Voice
     "mp3",               // Response format
@@ -1025,44 +1041,169 @@ String ArduinoGPTChat::speechToTextFromBuffer(uint8_t* audioBuffer, size_t buffe
     Serial.println("Calculated: " + String(totalLength) + ", Actual: " + String(pos));
   }
 
-  // Send request
-  Serial.println("Sending STT request...");
-  int httpCode = http.POST(requestBody, totalLength);
-
-  // Free request body memory
-  free(requestBody);
   
-  Serial.print("HTTP Response Code: ");
-  Serial.println(httpCode);
-  
-  if (httpCode == 200) {
-    // Get response body
-    response = http.getString();
-    Serial.println("Got STT response: " + response);
-
-    // Parse JSON response
-    DynamicJsonDocument jsonDoc(1024);
-    DeserializationError error = deserializeJson(jsonDoc, response);
-
-    if (!error) {
-      // Extract transcribed text
-      response = jsonDoc["text"].as<String>();
-    } else {
-      Serial.print("JSON parsing error: ");
-      Serial.println(error.c_str());
-      response = "";
-    }
-  } else {
-    Serial.print("HTTP Error: ");
-    Serial.println(httpCode);
-    // Try to get error response content
-    String errorResponse = http.getString();
-    if (errorResponse.length() > 0) {
-      Serial.println("Error response: " + errorResponse);
-    }
-    response = "";
-  }
   
   http.end();
   return response;
 }
+
+void ArduinoGPTChat::setAssemblyAIConfig(const char* assemblyAIKey) {
+    if (assemblyAIKey != nullptr) {
+        _assemblyAIKey = assemblyAIKey;
+    }
+}
+
+String ArduinoGPTChat::assemblyAISpeechToText(uint8_t* audioBuffer, size_t bufferSize) {
+    if (_assemblyAIKey == "") {
+        Serial.println("AssemblyAI key not set!");
+        return "";
+    }
+    
+    // Upload audio and get transcription
+    return uploadAndTranscribe(audioBuffer, bufferSize);
+}
+
+String ArduinoGPTChat::uploadAndTranscribe(uint8_t* audioBuffer, size_t bufferSize) {
+    WiFiClientSecure client;
+    client.setInsecure();
+    
+    HTTPClient http;
+    
+    // Step 1: Upload audio file
+    http.begin(client, _assemblyAIAudioUrl);
+    http.addHeader("Authorization", _assemblyAIKey);
+    http.addHeader("Content-Type", "application/octet-stream");
+    
+    Serial.println("Uploading to AssemblyAI...");
+    int uploadCode = http.POST(audioBuffer, bufferSize);
+    
+    if (uploadCode != 200) {
+        Serial.println("Upload failed: " + String(uploadCode));
+        http.end();
+        return "";
+    }
+    
+    String uploadResponse = http.getString();
+    http.end();
+    
+    DynamicJsonDocument uploadDoc(1024);
+    deserializeJson(uploadDoc, uploadResponse);
+    String audioUrl = uploadDoc["upload_url"].as<String>();
+    
+    if (audioUrl == "") {
+        Serial.println("No upload URL received");
+        return "";
+    }
+    
+    Serial.println("Audio uploaded: " + audioUrl);
+    
+    // Step 2: Request transcription
+    http.begin(client, _assemblyAITranscriptUrl);
+    http.addHeader("Authorization", _assemblyAIKey);
+    http.addHeader("Content-Type", "application/json");
+    
+    DynamicJsonDocument transcriptDoc(512);
+    transcriptDoc["audio_url"] = audioUrl;
+    
+    String transcriptBody;
+    serializeJson(transcriptDoc, transcriptBody);
+    
+    Serial.println("Starting transcription...");
+    int transcriptCode = http.POST(transcriptBody);
+    
+    if (transcriptCode != 200) {
+        Serial.println("Transcription request failed: " + String(transcriptCode));
+        http.end();
+        return "";
+    }
+    
+    String transcriptResponse = http.getString();
+    http.end();
+    
+    DynamicJsonDocument transcriptRespDoc(1024);
+    deserializeJson(transcriptRespDoc, transcriptResponse);
+    
+    String transcriptId = transcriptRespDoc["id"].as<String>();
+    Serial.println("Transcript ID: " + transcriptId);
+    
+    // Step 3: Poll for results
+    return pollTranscriptionResult(transcriptId);
+}
+
+String ArduinoGPTChat::pollTranscriptionResult(String transcriptId) {
+    String statusUrl = _assemblyAITranscriptUrl + "/" + transcriptId;
+    unsigned long startTime = millis();
+    const unsigned long timeout = 20000; // 20 second timeout
+    
+    WiFiClientSecure client;
+    client.setInsecure();
+    
+    while (millis() - startTime < timeout) {
+        HTTPClient http;
+        http.begin(client, statusUrl);
+        http.addHeader("Authorization", _assemblyAIKey);
+        
+        int statusCode = http.GET();
+        
+        if (statusCode == 200) {
+            String response = http.getString();
+            DynamicJsonDocument doc(2048);
+            deserializeJson(doc, response);
+            
+            String status = doc["status"].as<String>();
+            Serial.println("Status: " + status);
+            
+            if (status == "completed") {
+                String text = doc["text"].as<String>();
+                Serial.println("Transcription: " + text);
+                http.end();
+                return text;
+            } else if (status == "error") {
+                String error = doc["error"].as<String>();
+                Serial.println("Transcription error: " + error);
+                http.end();
+                return "";
+            }
+            // If still processing, continue polling
+        }
+        
+        http.end();
+        delay(1500); // Poll every 1.5 seconds
+    }
+    
+    Serial.println("Transcription timeout");
+    return "";
+}
+
+String ArduinoGPTChat::assemblyAISpeechToTextFromRecording() {
+    if (!_isRecording || _audioBuffer.empty()) {
+        return "";
+    }
+    
+    // Stop recording
+    _recordingI2S.end();
+    _isRecording = false;
+    
+    Serial.println("Converting recorded audio to WAV...");
+    
+    // Convert audio buffer to WAV format
+    uint8_t* wavBuffer = createWAVBuffer(_audioBuffer.data(), _audioBuffer.size());
+    size_t wavSize = calculateWAVSize(_audioBuffer.size());
+    
+    if (wavBuffer == nullptr) {
+        Serial.println("Failed to create WAV buffer!");
+        _audioBuffer.clear();
+        return "";
+    }
+    
+    // Use AssemblyAI for transcription
+    String transcribedText = assemblyAISpeechToText(wavBuffer, wavSize);
+    
+    // Clean up
+    free(wavBuffer);
+    _audioBuffer.clear();
+    
+    return transcribedText;
+}
+
+
